@@ -107,7 +107,7 @@ sudo rmdir "$MOUNTDIR"
 
 # Create container
 echo "🐳 Creating Distrobox container: $CONTAINER_NAME"
-distrobox-create --name "$CONTAINER_NAME" --root "$WORKDIR/rootfs"
+distrobox-create --name "$CONTAINER_NAME" --root "$WORKDIR/rootfs" --image "" --yes
 
 echo "✅ Success! You can now launch '$CONTAINER_NAME' from BoxBuddy."
 exit 0
