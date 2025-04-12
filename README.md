@@ -3,28 +3,42 @@
 **Turn any Linux ISO file into a ready-to-run Distrobox/BoxBuddy container automatically.**
 
 > ✅ Lightweight alternative to virtual machines  
-> ✅ Perfect for Bazzite, Fedora Atomic, Vanilla OS, and other container-focused Linux systems  
-> ✅ Just one command to extract and launch from `.iso`
+> ✅ Works on Bazzite, Fedora Atomic, Silverblue, Vanilla OS, and more  
+> ✅ Supports almost all Linux distributions
 
 ---
 
 ## 🚀 Features
 
-- Extracts root filesystem from standard `.iso` files (via `filesystem.squashfs`)
-- Creates a fully working Distrobox container from it
-- Automatically compatible with **BoxBuddy GUI**
-- Shares host folders (Downloads, Pictures, etc.) by default
-- Much lighter and faster than traditional VMs (GNOME Boxes, VMware, etc.)
-- Easy CLI usage: one-line install, one-line launch
+- Auto-detects and extracts squashfs from various ISO types:
+  - `filesystem.squashfs`, `airootfs.sfs`, `rootfs.squashfs`, etc.
+  - Special handling for NixOS (`squashfs-root`)
+- Creates a working container with `distrobox` using the extracted rootfs
+- Automatically recognized by **BoxBuddy GUI**
+- Host folder sharing works out-of-the-box
+- Requires no virtualization — just uses your host kernel
 
 ---
 
 ## 🖥️ Supported Platforms
 
-- ✅ Bazzite OS (Fedora Atomic-based)
+- ✅ Bazzite OS
 - ✅ Fedora Silverblue / Kinoite
 - ✅ Vanilla OS / blendOS
-- ✅ Most Linux distros that support Distrobox
+- ✅ Any distro that supports `distrobox`
+
+---
+
+## 📦 Supported ISO Distributions
+
+| Distro / ISO             | Supported | Method                         |
+|-------------------------|-----------|--------------------------------|
+| Ubuntu, Debian          | ✅        | `filesystem.squashfs`          |
+| Arch, EndeavourOS       | ✅        | `airootfs.sfs`                 |
+| Fedora, Rocky, Alma     | ✅        | `rootfs.squashfs`              |
+| Kali, Parrot, Zorin     | ✅        | `live/filesystem.squashfs`     |
+| NixOS                   | ✅        | `squashfs-root` (directory)    |
+| Others with squashfs    | ✅        | Any `*.squashfs` or rootfs     |
 
 ---
 
@@ -33,7 +47,8 @@
 ```bash
 mkdir -p ~/bin && tee ~/bin/iso2boxbuddy.sh > /dev/null << 'EOF'
 #!/usr/bin/env bash
-# iso2boxbuddy - Universal ISO → Distrobox converter (BoxBuddy compatible)
+# iso2boxbuddy - Universal ISO to Distrobox/BoxBuddy container converter
+# Supports: Ubuntu, Debian, Fedora, Arch, NixOS, Kali, Parrot, Manjaro, etc.
 
 set -e
 
@@ -47,63 +62,89 @@ CONTAINER_NAME="$2"
 WORKDIR="$HOME/.local/share/iso2boxbuddy/$CONTAINER_NAME"
 MOUNTDIR="/tmp/iso-mount-$CONTAINER_NAME"
 
-# 의존성 검사
-for cmd in unsquashfs distrobox mount grep find sudo; do
+# Dependency check
+for cmd in unsquashfs distrobox mount find sudo cp; do
     if ! command -v "$cmd" &>/dev/null; then
         echo "❌ '$cmd' is not installed. Please install it first."
         exit 1
     fi
 done
 
-# ISO 마운트
+# Mount ISO
 echo "📦 Mounting ISO: $ISO_PATH"
 sudo mkdir -p "$MOUNTDIR"
 sudo mount -o loop "$ISO_PATH" "$MOUNTDIR"
 
-# squashfs 경로 탐색
-SQUASH=$(find "$MOUNTDIR" -type f -name "filesystem.squashfs" | head -n 1)
+# Try to find root filesystem (standard squashfs or directory based)
+SQUASH=$(find "$MOUNTDIR" \(
+    -name "filesystem.squashfs" \
+    -o -name "rootfs.squashfs" \
+    -o -name "livecd.squashfs" \
+    -o -name "airootfs.sfs" \
+    -o -name "live/filesystem" \
+    -o -name "*.squashfs" \
+    -o -name "squashfs-root" \
+    \) 2>/dev/null | head -n 1)
 
-if [ -z "$SQUASH" ] || [ ! -f "$SQUASH" ]; then
-    echo "❌ 'filesystem.squashfs' not found in the ISO. Cannot continue."
+# Special case: NixOS squashfs-root as directory
+if [ -z "$SQUASH" ]; then
+    SQUASH=$(find "$MOUNTDIR/nix/store" -type d -name "squashfs-root" 2>/dev/null | head -n 1)
+    if [ -n "$SQUASH" ]; then
+        echo "📂 Detected NixOS squashfs-root directory. Copying contents..."
+        mkdir -p "$WORKDIR/rootfs"
+        cp -a "$SQUASH/." "$WORKDIR/rootfs/"
+    fi
+fi
+
+# Extract if it's a squashfs file
+if [ -n "$SQUASH" ] && [ -f "$SQUASH" ]; then
+    echo "📂 Extracting squashfs file: $SQUASH"
+    mkdir -p "$WORKDIR"
+    unsquashfs -d "$WORKDIR/rootfs" "$SQUASH"
+elif [ ! -d "$WORKDIR/rootfs" ]; then
+    echo "❌ Could not find a valid root filesystem in ISO. Aborting."
     sudo umount "$MOUNTDIR"
-    rmdir "$MOUNTDIR"
+    sudo rmdir "$MOUNTDIR"
     exit 1
 fi
 
-# 추출 디렉토리 생성
-mkdir -p "$WORKDIR"
-cd "$WORKDIR"
-
-echo "📂 Extracting squashfs from: $SQUASH"
-unsquashfs -d rootfs "$SQUASH"
-
-# 마운트 해제
+# Unmount and cleanup
 echo "🔓 Unmounting ISO..."
 sudo umount "$MOUNTDIR"
-rmdir "$MOUNTDIR"
+sudo rmdir "$MOUNTDIR"
 
-# 컨테이너 생성
+# Create container
 echo "🐳 Creating Distrobox container: $CONTAINER_NAME"
 distrobox-create --name "$CONTAINER_NAME" --root "$WORKDIR/rootfs"
 
 echo "✅ Success! You can now launch '$CONTAINER_NAME' from BoxBuddy."
+exit 0
 EOF
 
 chmod +x ~/bin/iso2boxbuddy.sh
+export PATH="$HOME/bin:$PATH"
 echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
 ---
 
-> 🔁 Reboot your system after installing these if needed.
+## 🔧 Dependencies
+
+Install these on OSTree-based distros like Bazzite:
+
+```bash
+rpm-ostree install squashfs-tools distrobox
+```
+
+> ⚠️ Reboot after installing if needed.
 
 ---
 
 ## ✅ Usage
 
 ```bash
-iso2boxbuddy.sh /path/to/linux.iso my-container-name
+iso2boxbuddy.sh /path/to/your.iso my-container-name
 ```
 
 📦 Example:
@@ -112,24 +153,39 @@ iso2boxbuddy.sh /path/to/linux.iso my-container-name
 iso2boxbuddy.sh ~/Downloads/ubuntu-22.04.iso ubuntu-from-iso
 ```
 
-- The container will appear in **BoxBuddy** automatically
-- Host folders like `~/Downloads` will be accessible inside the container
-- You can run GUI apps, CLI tools, or development environments
+- Container will show up in **BoxBuddy** GUI automatically
+- Host folders like Downloads, Documents, etc., will be accessible
+- Perfect for testing distros or using dev environments
 
 ---
 
 ## 📁 File Structure
 
-| Item                             | Description                                      |
-|----------------------------------|--------------------------------------------------|
-| `iso2boxbuddy.sh`                | Main auto-setup script                          |
-| `~/.local/share/iso2boxbuddy/*` | Extracted ISO contents and rootfs per container |
-| `BoxBuddy`                       | GUI frontend to manage the container easily     |
+| Path                                | Purpose                            |
+|-------------------------------------|------------------------------------|
+| `~/.local/share/iso2boxbuddy/`     | Extracted ISO & container files    |
+| `~/bin/iso2boxbuddy.sh`            | Your custom ISO-to-container tool  |
+| BoxBuddy                           | GUI container manager integration  |
 
 ---
 
-## 🛠 TODO
+## 🛠 TODO / Future Features
 
-- [ ] `.desktop` launcher generation
+- [ ] `.desktop` shortcut generation
 - [ ] Preset ISO downloader (`--preset ubuntu`)
-- [ ] GUI frontend for script (via Zenity)
+- [ ] GUI frontend (zenity or yad-based)
+- [ ] Automatic AppImage container creation support
+
+---
+
+## 👤 Author
+
+Made with ❤️ for the container community  
+Contributions, pull requests, and bug reports welcome!
+
+---
+
+## 🪪 License
+
+MIT — free to use, modify, and distribute.
+
