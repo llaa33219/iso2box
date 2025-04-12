@@ -76,15 +76,7 @@ sudo mkdir -p "$MOUNTDIR"
 sudo mount -o loop "$ISO_PATH" "$MOUNTDIR"
 
 # Try to find root filesystem (standard squashfs or directory based)
-SQUASH=$(find "$MOUNTDIR" \(
-    -name "filesystem.squashfs" \
-    -o -name "rootfs.squashfs" \
-    -o -name "livecd.squashfs" \
-    -o -name "airootfs.sfs" \
-    -o -name "live/filesystem" \
-    -o -name "*.squashfs" \
-    -o -name "squashfs-root" \
-    \) 2>/dev/null | head -n 1)
+SQUASH=$(find "$MOUNTDIR" -type f \( -name "filesystem.squashfs" -o -name "rootfs.squashfs" -o -name "livecd.squashfs" -o -name "airootfs.sfs" -o -name "live/filesystem" -o -name "*.squashfs" \) 2>/dev/null | head -n 1)
 
 # Special case: NixOS squashfs-root as directory
 if [ -z "$SQUASH" ]; then
