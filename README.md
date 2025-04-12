@@ -33,7 +33,7 @@
 ```bash
 mkdir -p ~/bin && tee ~/bin/iso2boxbuddy.sh > /dev/null << 'EOF'
 #!/usr/bin/env bash
-# iso2boxbuddy - Create a Distrobox container from a Linux ISO file
+# iso2boxbuddy - Create a Distrobox/BoxBuddy container from a Linux ISO file using bsdtar (no 7z)
 
 set -e
 
@@ -46,23 +46,25 @@ ISO_PATH="$1"
 CONTAINER_NAME="$2"
 WORKDIR="$HOME/.local/share/iso2boxbuddy/$CONTAINER_NAME"
 
-for cmd in 7z unsquashfs distrobox; do
+# 의존 도구 확인
+for cmd in bsdtar unsquashfs distrobox; do
     if ! command -v $cmd &>/dev/null; then
         echo "❌ '$cmd' is not installed. Please install it first."
         exit 1
     fi
 done
 
-echo "📦 Extracting ISO: $ISO_PATH"
+echo "📦 Extracting ISO with bsdtar: $ISO_PATH"
 mkdir -p "$WORKDIR"
 cd "$WORKDIR"
-7z x "$ISO_PATH" -y
+bsdtar -xf "$ISO_PATH"
 
 if [ ! -f "filesystem.squashfs" ]; then
-    echo "❌ filesystem.squashfs not found. This ISO might not be supported."
+    echo "❌ filesystem.squashfs not found. This ISO may not be supported."
     exit 1
 fi
 
+echo "📂 Extracting filesystem.squashfs..."
 unsquashfs -d rootfs filesystem.squashfs
 
 echo "🐳 Creating container: $CONTAINER_NAME"
@@ -81,7 +83,7 @@ source ~/.bashrc
 ## 🧩 Dependencies
 
 ```bash
-rpm-ostree install p7zip squashfs-tools distrobox
+rpm-ostree install bsdtar squashfs-tools distrobox
 ```
 
 > 🔁 Reboot your system after installing these if needed.
