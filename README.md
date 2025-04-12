@@ -33,7 +33,7 @@
 ```bash
 mkdir -p ~/bin && tee ~/bin/iso2boxbuddy.sh > /dev/null << 'EOF'
 #!/usr/bin/env bash
-# iso2boxbuddy - Create a Distrobox/BoxBuddy container from a Linux ISO file using bsdtar (no 7z)
+# iso2boxbuddy - Universal ISO → Distrobox converter (BoxBuddy compatible)
 
 set -e
 
@@ -42,35 +42,51 @@ if [ $# -ne 2 ]; then
     exit 1
 fi
 
-ISO_PATH="$1"
+ISO_PATH="$(realpath "$1")"
 CONTAINER_NAME="$2"
 WORKDIR="$HOME/.local/share/iso2boxbuddy/$CONTAINER_NAME"
+MOUNTDIR="/tmp/iso-mount-$CONTAINER_NAME"
 
-# 의존 도구 확인
-for cmd in bsdtar unsquashfs distrobox; do
-    if ! command -v $cmd &>/dev/null; then
+# 의존성 검사
+for cmd in unsquashfs distrobox mount grep find sudo; do
+    if ! command -v "$cmd" &>/dev/null; then
         echo "❌ '$cmd' is not installed. Please install it first."
         exit 1
     fi
 done
 
-echo "📦 Extracting ISO with bsdtar: $ISO_PATH"
-mkdir -p "$WORKDIR"
-cd "$WORKDIR"
-bsdtar -xf "$ISO_PATH"
+# ISO 마운트
+echo "📦 Mounting ISO: $ISO_PATH"
+sudo mkdir -p "$MOUNTDIR"
+sudo mount -o loop "$ISO_PATH" "$MOUNTDIR"
 
-if [ ! -f "filesystem.squashfs" ]; then
-    echo "❌ filesystem.squashfs not found. This ISO may not be supported."
+# squashfs 경로 탐색
+SQUASH=$(find "$MOUNTDIR" -type f -name "filesystem.squashfs" | head -n 1)
+
+if [ -z "$SQUASH" ] || [ ! -f "$SQUASH" ]; then
+    echo "❌ 'filesystem.squashfs' not found in the ISO. Cannot continue."
+    sudo umount "$MOUNTDIR"
+    rmdir "$MOUNTDIR"
     exit 1
 fi
 
-echo "📂 Extracting filesystem.squashfs..."
-unsquashfs -d rootfs filesystem.squashfs
+# 추출 디렉토리 생성
+mkdir -p "$WORKDIR"
+cd "$WORKDIR"
 
-echo "🐳 Creating container: $CONTAINER_NAME"
+echo "📂 Extracting squashfs from: $SQUASH"
+unsquashfs -d rootfs "$SQUASH"
+
+# 마운트 해제
+echo "🔓 Unmounting ISO..."
+sudo umount "$MOUNTDIR"
+rmdir "$MOUNTDIR"
+
+# 컨테이너 생성
+echo "🐳 Creating Distrobox container: $CONTAINER_NAME"
 distrobox-create --name "$CONTAINER_NAME" --root "$WORKDIR/rootfs"
 
-echo "✅ Done! You can now open '$CONTAINER_NAME' from BoxBuddy."
+echo "✅ Success! You can now launch '$CONTAINER_NAME' from BoxBuddy."
 EOF
 
 chmod +x ~/bin/iso2boxbuddy.sh
@@ -79,12 +95,6 @@ source ~/.bashrc
 ```
 
 ---
-
-## 🧩 Dependencies
-
-```bash
-rpm-ostree install bsdtar squashfs-tools distrobox
-```
 
 > 🔁 Reboot your system after installing these if needed.
 
