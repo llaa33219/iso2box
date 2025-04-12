@@ -91,6 +91,9 @@ fi
 # Extract if it's a squashfs file
 if [ -n "$SQUASH" ] && [ -f "$SQUASH" ]; then
     echo "📂 Extracting squashfs file: $SQUASH"
+
+    rm -rf "$WORKDIR/rootfs"
+    mkdir -p "$WORKDIR/rootfs"
     mkdir -p "$WORKDIR"
     unsquashfs -d "$WORKDIR/rootfs" "$SQUASH"
 elif [ ! -d "$WORKDIR/rootfs" ]; then
