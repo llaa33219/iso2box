@@ -95,7 +95,8 @@ if [ -n "$SQUASH" ] && [ -f "$SQUASH" ]; then
     rm -rf "$WORKDIR/rootfs"
     mkdir -p "$WORKDIR/rootfs"
     mkdir -p "$WORKDIR"
-    unsquashfs -d "$WORKDIR/rootfs" "$SQUASH"
+    echo "📂 Extracting squashfs..."
+    unsquashfs -d "$WORKDIR/rootfs" "$SQUASH" | tee /dev/null
 elif [ ! -d "$WORKDIR/rootfs" ]; then
     echo "❌ Could not find a valid root filesystem in ISO. Aborting."
     sudo umount "$MOUNTDIR"
